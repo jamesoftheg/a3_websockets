@@ -1,0 +1,309 @@
+<!--
+  "StAuth10222: I James Gelfand, 000275852 certify that this material is my original work. 
+  No other person's work has been used without due acknowledgement. 
+  I have not made my work available to anyone else."
+-->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Latest compiled and minified CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <!-- Custom CSS-->
+    <style>
+        body {
+          margin-top: 50px;
+          margin-bottom: 50px;
+          background-color: #2416a3;    
+        }
+  
+        div {
+          border-radius: 25px;
+          padding: 20px;
+          background-color: rgb(255, 255, 255);    
+        }
+        #auctionData {
+            text-align: center;
+        }
+        #waitingdiv {
+            text-align: center;
+            font-size: 30px;
+        }
+        #userwinning {
+            text-align: center;
+            color: rgb(16, 124, 70);
+        }
+        #userlosing {
+            text-align: center;
+            color: rgb(185, 42, 42);
+        }
+
+        /* Loader from W3 Schools */
+        .loader {
+            margin: auto;
+            border: 16px solid #f3f3f3; /* Light grey */
+            border-top: 16px solid royalblue; /* Blue */
+            border-radius: 50%;
+            width: 120px;
+            height: 120px;
+            animation: spin 2s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+      </style>
+
+    <title>Bidder</title>
+  </head>
+  <body>
+    <div id="userentry" class="container">
+        <div class="container">
+            <form id="create_name" action="" class="needs-validation" novalidate>
+                <div class="form-group">
+                <label for="user_name">Enter a valid name to proceed:</label>
+                <input type="text" class="form-control" id="user_name" placeholder="Enter your name." name="user_name" required>
+                </div>
+                <button type="submit" id="submitName" class="btn btn-primary btn-lg btn-block">Submit</button>
+                <button disabled type="submit" id="submitNameOff" class="btn btn-primary btn-lg btn-block">Submit</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="waitingdiv" class="container">
+        <h1 id="results"></h1>
+        <br />
+        <h1>Waiting for the next auction to begin...</h1>
+        <br />
+        <div class="loader"></div>
+    </div>
+
+    <div id="auctiondiv" class="container">
+        
+        <!-- Contains current info about the auction -->
+        <div class="container" id="auctionData">
+            <h1 id="timer">Auction Time Remaining: </h1>
+            <h1 id="biditem"></h1>
+            <h1 id="currentbid"></h1>
+            <h1 id="userwinning"></h1>
+            <h1 id="userlosing"></h1>
+            <span id="warning"></span> <br />
+        </div>
+
+        <div class="container">
+            <form id="create_bid" action="" class="needs-validation" novalidate>
+                <div class="form-group">
+                    <label for="bid_price">Price:</label>
+                    <input type="number" class="form-control" id="bid_price" placeholder="Enter your bid." name="bid_price" min="0.01" step="0.01" oninput="validate(this)" required>
+                </div>
+                <button type="submit" id="submitBid" class="btn btn-primary btn-lg btn-block">Submit</button>
+                <button disabled type="submit" id="submitBidOff" class="btn btn-primary btn-lg btn-block">Submit</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- jQuery library -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+
+    <!-- Popper JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+
+    <!-- Latest compiled JavaScript -->
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    
+    <!-- Auction Script -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Checks if the auction is in session
+        var auction = false;
+        // Checks if the user is participating in the auction
+        var participant = false;
+        // Time
+        var time;
+        // User Name
+        var name = "";
+        // Highest Bid
+        var highestbid;
+        // Check if has bid history
+        var hasHistory = false;
+        // Number of bids
+        var userBids = 0;
+        // Winning bid name
+        var winnerName;
+        // Starting bid
+        var startingBid;
+        // Make the connection
+        var socket = io();
+
+        // Page handling
+        $(document).ready(function() {
+            if (auction === false) {
+                $("#userentry").show();
+                $("#waitingdiv").hide();
+                $("#auctiondiv").hide();
+                $("#submitName").hide();
+                $("#submitNameOff").show();
+                $("#submitBidOff").hide();
+            }
+        });
+
+        // Ensures that user must enter a name before they can submit form.
+        $('#user_name').keyup(function(event) {
+            var input=$(this);
+            var message=$(this).val();
+            if(message) {
+                $("#submitNameOff").hide();
+                $("#submitName").show();
+            }
+            else {
+                $("#submitNameOff").show();
+                $("#submitName").hide();
+            }	
+        });
+
+        // Create a user name. Set participation in auction.
+        $("#create_name").submit(function() {
+            if (auction === false) {
+                $("#waitingdiv").show();
+                $("#userentry").hide();
+            }
+            if (auction === true && participant === false) {
+                $("#waitingdiv").show();
+                $("#userentry").hide();
+                participant = true;
+            }
+            participant = true;
+            name = $("#user_name").val();
+            $("#submitNameOff").show();
+            $("#submitName").hide();
+
+            // override the default submit behaviour
+            return false;
+        });
+
+        // Submit a new bid.
+        $("#create_bid").submit( function(){
+            $("#userlosing").html(""); 
+            $("#userwinning").html("");
+            // Check that your bid is currently higher than the requested price.
+            var bid = parseFloat($("#bid_price").val());
+            if (bid > highestbid && auction === true) {
+                highestbid = bid;
+                // Update number of bids
+                userBids++;
+                socket.emit("submit_bid",
+                    {name: $("#user_name").val(),
+                    price: $("#bid_price").val(),
+                    bidcount: userBids
+                });
+                $("#userwinning").html("Your bid is winning with: " + highestbid); 
+            } else {
+                $("#userlosing").html("Bid must be higher than: " + highestbid); 
+            }
+
+            // override the default submit behaviour
+            return false;
+        })
+
+        // Bid item has been set, auction has commenced.
+        socket.on("deliver_item", function(item)
+        {
+            // Remove winning and losing text
+            $("#userlosing").html(""); 
+            $("#userwinning").html("");
+            // Reset bid numbers
+            userBids = 0;
+            // Check for an instance with no bids
+            winnerName = "No Winner";
+            startingBid = parseFloat(item.price);
+            if (participant === true) {
+                $("#submitBidOff").hide();
+                $("#submitBid").show();
+            }
+            // Waiting message is hidden
+            $("#waitingdiv").hide();
+            time = item.time;
+            highestbid = parseFloat(item.price);
+            $("#currentbid").html("Leading Bid: " + highestbid);
+            // Countdown has begun, auction has commenced.
+            updateTimer();
+            auction = true;
+            $("#biditem").html("Bid item: " + item.name); 
+            // Show the bidding.
+            if (participant === true) {
+                $("#userentry").hide();
+                $("#auctiondiv").show();
+            }
+        })
+
+        // Once a bid has been entered, the highest bid is updated
+        socket.on('deliver_bid', function(bid) {  
+            // The new highest bid is the price of the last bid entered.
+            highestbid = bid.price;
+            // Update winning bid name
+            winnerName = bid.name;
+            // Update div
+            $("#currentbid").html("Leading Bid: " + highestbid);
+        })
+
+        // Timer
+        function updateTimer()
+        {
+            time = time - 1;
+            document.getElementById("timer").innerHTML = 
+            "Auction Time Remaining: " + time;
+            
+            // is time up?
+            if (time != 0)
+            {
+            setTimeout(
+                updateTimer, 
+                1000);
+            } 
+            else if (time == 0)
+            {
+                auction = false;
+                if (participant === true) {
+                    $("#waitingdiv").show();
+                }
+                $("#submitBidOff").show();
+                $("#submitBid").hide();
+                $("#auctiondiv").hide();
+                if (highestbid === startingBid) {
+                    if (participant === true) {
+                        document.getElementById("results").innerHTML = "No bids found - auction has ended.";
+                    }
+                }
+                else {
+                    if (participant === true) {
+                        document.getElementById("results").innerHTML = "Winner name: " + winnerName + " Winning bid: " + highestbid;
+                    }
+                }   
+                document.getElementById("timer").innerHTML = "Auction has ended.";
+            }
+        }
+
+        // Ensure that user can only enter 2 decimal places
+        var validate = function(e) {
+            var userinput = e.value;
+            e.value = (userinput.indexOf(".") >= 0) ? (userinput.substr(0, userinput.indexOf(".")) + userinput.substr(userinput.indexOf("."), 3)) : userinput;
+        }
+        
+
+        // Example starter JavaScript for disabling form submissions if there are invalid fields
+        
+
+    </script>
+  </body>
+</html>
+
+
+
+
+
+
